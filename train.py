@@ -11,6 +11,8 @@ import argparse
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from PIL import Image
+from torchvision import datasets, transforms
 import numpy as np
 
 import WNet
@@ -65,5 +67,27 @@ def test():
     train_op(wnet, optimizer, synthetic_data)
     
 def main():
-    args = parser.parse_args()
-    
+    # args = parser.parse_args()
+    dir_path = os.path.dirname(os.path.realpath(__file__))
+    print(f"dir_path: {dir_path}")
+
+
+    dataset = datasets.ImageFolder("./data")
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=32, shuffle=True)
+    # images, labels = next(iter(dataloader))
+
+    wnet=WNet.WNet(4)
+    wnet=wnet.cuda()
+    optimizer=torch.optim.SGD(wnet.parameters(), 0.001)
+
+    for epoch in range(100):
+        print("\n==============================\n")
+        print("Epoch = " + str(epoch))
+        for batch, labels in dataloader:
+            print(batch)
+            image = batch[0]
+            data = image.convert('RGB')
+            train_op(wnet, optimizer, data)
+
+if __name__ == "__main__":
+    main()
