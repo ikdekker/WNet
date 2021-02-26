@@ -8,12 +8,21 @@ Training and Predicting with the W-Net unsupervised segmentation architecture
 
 import os
 import argparse
+from datetime import datetime
+
+from PIL import Image
+import matplotlib.pyplot as plt
+import numpy as np
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from PIL import Image
+
+import torch_enhance
+
+import torchvision.transforms as T
+from torchvision.utils import make_grid
 from torchvision import datasets, transforms
-import numpy as np
 
 import WNet
 
@@ -38,26 +47,32 @@ horizontal_sobel=torch.nn.Parameter(torch.from_numpy(np.array([[[[1,   1,  1],
                                               [-1 ,-1, -1]]]])).float().cuda(), requires_grad=False)
 
 def gradient_regularization(softmax, device='cuda'):
-    vert=torch.cat([F.conv2d(softmax[:, i].unsqueeze(1), vertical_sobel) for i in range(softmax.shape[0])], 1)
-    hori=torch.cat([F.conv2d(softmax[:, i].unsqueeze(1), horizontal_sobel) for i in range(softmax.shape[0])], 1)
-    print('vert', torch.sum(vert))
-    print('hori', torch.sum(hori))
+    vert=torch.cat([F.conv2d(softmax[:, i].unsqueeze(1), vertical_sobel) for i in range(softmax.shape[1])], 1)
+    hori=torch.cat([F.conv2d(softmax[:, i].unsqueeze(1), horizontal_sobel) for i in range(softmax.shape[1])], 1)
+    # print('vert', torch.sum(vert))
+    # print('hori', torch.sum(hori))
     mag=torch.pow(torch.pow(vert, 2)+torch.pow(hori, 2), 0.5)
     mean=torch.mean(mag)
     return mean
 
 def train_op(model, optimizer, input, psi=0.5):
     enc = model(input, returns='enc')
+
     n_cut_loss=gradient_regularization(enc)*psi
     n_cut_loss.backward()
     optimizer.step()
+
     optimizer.zero_grad()
     dec = model(input, returns='dec')
     rec_loss=torch.mean(torch.pow(torch.pow(input, 2) + torch.pow(dec, 2), 0.5))*(1-psi)
+
     rec_loss.backward()
+    # print(f"Loss: {rec_loss}")
     optimizer.step()
+
     optimizer.zero_grad()
-    return model
+
+    return (model, rec_loss)
 
 def test():
     wnet=WNet.WNet(4)
@@ -65,29 +80,68 @@ def test():
     synthetic_data=torch.rand((1, 3, 128, 128)).cuda()
     optimizer=torch.optim.SGD(wnet.parameters(), 0.001)
     train_op(wnet, optimizer, synthetic_data)
-    
+
+def show_images(images, nmax=64):
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax.set_xticks([]); ax.set_yticks([])
+    ax.imshow(make_grid((images[:nmax]), nrow=8).permute(1, 2, 0))
+
+def show_batch(dl, nmax=64):
+    for images, labels in dl:
+        print(len(images))
+        show_images(images, nmax)
+        break
+
 def main():
     # args = parser.parse_args()
     dir_path = os.path.dirname(os.path.realpath(__file__))
     print(f"dir_path: {dir_path}")
 
+    image_size = (128, 128)
+    transforms = T.Compose([
+        T.Resize(image_size),
+        T.ToTensor()
+    ])
 
-    dataset = datasets.ImageFolder("./data")
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=32, shuffle=True)
-    # images, labels = next(iter(dataloader))
+    # Download BSD500 dataset
+    torch_enhance.datasets.BSDS500()
+
+    dataset = datasets.ImageFolder("./data", transform=transforms)
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=10, shuffle=True)
 
     wnet=WNet.WNet(4)
     wnet=wnet.cuda()
-    optimizer=torch.optim.SGD(wnet.parameters(), 0.001)
 
-    for epoch in range(100):
-        print("\n==============================\n")
-        print("Epoch = " + str(epoch))
-        for batch, labels in dataloader:
-            print(batch)
-            image = batch[0]
-            data = image.convert('RGB')
-            train_op(wnet, optimizer, data)
+    learning_rate = 0.0003
+    optimizer=torch.optim.SGD(wnet.parameters(), learning_rate)
+
+    start_time = datetime.now()
+    loss = 0
+    for epoch in range(1, 50000):
+        if epoch % 1000 == 0:
+            learning_rate /= 10
+            print(f"Reducing learning rate to {learning_rate}")
+            optimizer=torch.optim.SGD(wnet.parameters(), learning_rate)
+
+        if epoch % 100 == 0:
+            print("==============================")
+            print("Epoch = " + str(epoch))
+            duration = (datetime.now() - start_time).seconds
+            print(f"Loss: {loss}")
+            print(f"Duration: {duration}s")
+
+            start_time = datetime.now()
+        # start_time = datetime.now()
+
+        # for i, (batch, labels) in enumerate(dataloader):
+        batch, labels = next(iter(dataloader))
+            # print(f"Batch {i}")
+        batch = batch.cuda()
+        wnet, loss = train_op(wnet, optimizer, batch)
+
+
+        # duration = (datetime.now() - start_time).seconds
+        # print(f"Duration: {duration}s")
 
 if __name__ == "__main__":
     main()
