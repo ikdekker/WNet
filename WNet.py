@@ -13,32 +13,42 @@ import torch.nn.functional as F
 class Block(nn.Module):
     def __init__(self, in_filters, out_filters, seperable=True):
         super(Block, self).__init__()
-        
+        self.seperable = seperable
+        self.in_filters = in_filters
+        self.out_filters = out_filters
+
         if seperable:
+            self.spatial1 = nn.Conv2d(in_filters, in_filters, kernel_size=3, groups=in_filters, padding=1)
+            self.depth1 = nn.Conv2d(in_filters, out_filters, kernel_size=1)
             
-            self.spatial1=nn.Conv2d(in_filters, in_filters, kernel_size=3, groups=in_filters, padding=1)
-            self.depth1=nn.Conv2d(in_filters, out_filters, kernel_size=1)
-            
-            self.conv1=lambda x: self.depth1(self.spatial1(x))
-            
-            self.spatial2=nn.Conv2d(out_filters, out_filters, kernel_size=3, padding=1, groups=out_filters)
-            self.depth2=nn.Conv2d(out_filters, out_filters, kernel_size=1)
-            
-            self.conv2=lambda x: self.depth2(self.spatial2(x))
+            self.spatial2 = nn.Conv2d(out_filters, out_filters, kernel_size=3, padding=1, groups=out_filters)
+            self.depth2 = nn.Conv2d(out_filters, out_filters, kernel_size=1)
             
         else:
             
-            self.conv1=nn.Conv2d(in_filters, out_filters, kernel_size=3, padding=1)
-            self.conv2=nn.Conv2d(out_filters, out_filters, kernel_size=3, padding=1)
+            self.sep_conv1 = nn.Conv2d(in_filters, out_filters, kernel_size=3, padding=1)
+            self.sep_conv2 = nn.Conv2d(out_filters, out_filters, kernel_size=3, padding=1)
         
-        self.batchnorm1=nn.BatchNorm2d(out_filters)
-        self.batchnorm2=nn.BatchNorm2d(out_filters)
+        self.batchnorm1 = nn.BatchNorm2d(out_filters)
+        self.batchnorm2 = nn.BatchNorm2d(out_filters)
+
+    def conv1(self, x):
+        if self.seperable:
+            return self.depth1(self.spatial1(x))
+        else:
+            return self.sep_conv1(x)
+
+    def conv2(self, x):
+        if self.seperable:
+            return self.depth2(self.spatial2(x))
+        else:
+            return self.sep_conv2(x)
 
     def forward(self, x):
         
-        x=self.batchnorm1(self.conv1(x)).clamp(0)
+        x = self.batchnorm1(self.conv1(x)).clamp(0)
         
-        x=self.batchnorm2(self.conv2(x)).clamp(0)
+        x = self.batchnorm2(self.conv2(x)).clamp(0)
         
         return x
 

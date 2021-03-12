@@ -117,7 +117,7 @@ def main():
 
     start_time = datetime.now()
     loss = 0
-    for epoch in range(1, 50000):
+    for epoch in range(1, 10):
         if epoch % 1000 == 0:
             learning_rate /= 10
             print(f"Reducing learning rate to {learning_rate}")
@@ -142,6 +142,8 @@ def main():
 
         # duration = (datetime.now() - start_time).seconds
         # print(f"Duration: {duration}s")
+
+    torch.save(wnet, "wnet.pt")
 
 if __name__ == "__main__":
     main()
