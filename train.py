@@ -117,7 +117,7 @@ def main():
 
     start_time = datetime.now()
     loss = 0
-    for epoch in range(1, 10):
+    for epoch in range(1, 50000):
         if epoch % 1000 == 0:
             learning_rate /= 10
             print(f"Reducing learning rate to {learning_rate}")
