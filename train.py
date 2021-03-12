@@ -19,7 +19,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 import torch_enhance
-
+import torchvision
 import torchvision.transforms as T
 from torchvision.utils import make_grid
 from torchvision import datasets, transforms
@@ -37,6 +37,8 @@ parser.add_argument('--input_folder', metavar='f', default=None, type=str,
                     help='Folder of input images')
 parser.add_argument('--output_folder', metavar='of', default=None, type=str, 
                     help='folder of output images')
+parser.add_argument('--load', metavar='of', default=None, type=str,
+                    help='model')
 
 vertical_sobel=torch.nn.Parameter(torch.from_numpy(np.array([[[[1,  0,  -1], 
                                             [1,  0,  -1], 
@@ -93,7 +95,8 @@ def show_batch(dl, nmax=64):
         break
 
 def main():
-    # args = parser.parse_args()
+    args = parser.parse_args()
+
     dir_path = os.path.dirname(os.path.realpath(__file__))
     print(f"dir_path: {dir_path}")
 
@@ -109,41 +112,61 @@ def main():
     dataset = datasets.ImageFolder("./data", transform=transforms)
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=10, shuffle=True)
 
-    wnet=WNet.WNet(4)
-    wnet=wnet.cuda()
+    if not args.load:
+        wnet=WNet.WNet(4)
+        wnet=wnet.cuda()
 
-    learning_rate = 0.0003
-    optimizer=torch.optim.SGD(wnet.parameters(), learning_rate)
+        learning_rate = 0.0003
+        optimizer=torch.optim.SGD(wnet.parameters(), learning_rate)
 
-    start_time = datetime.now()
-    loss = 0
-    for epoch in range(1, 50000):
-        if epoch % 1000 == 0:
-            learning_rate /= 10
-            print(f"Reducing learning rate to {learning_rate}")
-            optimizer=torch.optim.SGD(wnet.parameters(), learning_rate)
+        start_time = datetime.now()
+        loss = 0
+        for epoch in range(1, 5000):
+            if epoch % 1000 == 0:
+                learning_rate /= 10
+                print(f"Reducing learning rate to {learning_rate}")
+                optimizer=torch.optim.SGD(wnet.parameters(), learning_rate)
 
-        if epoch % 100 == 0:
-            print("==============================")
-            print("Epoch = " + str(epoch))
-            duration = (datetime.now() - start_time).seconds
-            print(f"Loss: {loss}")
-            print(f"Duration: {duration}s")
+            if epoch % 100 == 0:
+                print("==============================")
+                print("Epoch = " + str(epoch))
+                duration = (datetime.now() - start_time).seconds
+                print(f"Loss: {loss}")
+                print(f"Duration: {duration}s")
 
-            start_time = datetime.now()
-        # start_time = datetime.now()
-
-        # for i, (batch, labels) in enumerate(dataloader):
-        batch, labels = next(iter(dataloader))
-            # print(f"Batch {i}")
-        batch = batch.cuda()
-        wnet, loss = train_op(wnet, optimizer, batch)
+                start_time = datetime.now()
 
 
-        # duration = (datetime.now() - start_time).seconds
-        # print(f"Duration: {duration}s")
 
-    torch.save(wnet, "wnet.pt")
+            batch, labels = next(iter(dataloader))
+            batch = batch.cuda()
+            wnet, loss = train_op(wnet, optimizer, batch)
+
+
+            # duration = (datetime.now() - start_time).seconds
+            # print(f"Duration: {duration}s")
+
+        torch.save(wnet, "wnet.pt")
+    else:
+        wnet = torch.load(args.load, map_location='cpu')
+
+        encodings = []
+        for i, (batch, labels) in enumerate(dataloader):
+            if i == 50:
+                break
+
+            print(f"\rSegmenting image {i}/{len(dataloader)}", end='')
+            # batch = batch.cuda()
+            enc = wnet.forward(batch, returns="enc")
+            # encodings.append(enc[0].reshape(enc.shape[2], enc.shape[3], enc.shape[1]).detach().numpy())
+            encodings.append(enc[0].detach().numpy())
+
+        encodings = torch.tensor(encodings)
+        plt.imshow(torchvision.utils.make_grid(encodings, nrow=10).permute(1, 2, 0))
+        plt.show()
+
+
+
 
 if __name__ == "__main__":
     main()
