@@ -39,6 +39,9 @@ parser.add_argument('--output_folder', metavar='of', default=None, type=str,
                     help='folder of output images')
 parser.add_argument('--load', metavar='of', default=None, type=str,
                     help='model')
+parser.add_argument('--save_model', metavar='of', default=None, type=str,
+                    help='directory to save model')
+
 
 vertical_sobel=torch.nn.Parameter(torch.from_numpy(np.array([[[[1,  0,  -1], 
                                             [1,  0,  -1], 
@@ -110,9 +113,17 @@ def main():
     torch_enhance.datasets.BSDS500()
 
     dataset = datasets.ImageFolder("./data", transform=transforms)
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=10, shuffle=True)
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=True)
 
     if not args.load:
+
+        if not args.save_model:
+            print("Provide a name for the model")
+            return
+
+        save_model_dir = f"models/{args.save_model}"
+        os.makedirs(save_model_dir)
+
         wnet=WNet.WNet(4)
         wnet=wnet.cuda()
 
@@ -121,7 +132,7 @@ def main():
 
         start_time = datetime.now()
         loss = 0
-        for epoch in range(1, 5000):
+        for epoch in range(1, 50000):
             if epoch % 1000 == 0:
                 learning_rate /= 10
                 print(f"Reducing learning rate to {learning_rate}")
@@ -133,6 +144,14 @@ def main():
                 duration = (datetime.now() - start_time).seconds
                 print(f"Loss: {loss}")
                 print(f"Duration: {duration}s")
+
+                model_name = f"{args.save_model}-{epoch}.pt"
+                model_path = f"{save_model_dir}/{model_name}"
+                print(f"Saving current model as '{model_path}'")
+                torch.save(wnet, model_path)
+
+
+
 
                 start_time = datetime.now()
 
@@ -146,7 +165,7 @@ def main():
             # duration = (datetime.now() - start_time).seconds
             # print(f"Duration: {duration}s")
 
-        torch.save(wnet, "wnet.pt")
+        torch.save(wnet, "models/75.pt")
     else:
         wnet = torch.load(args.load, map_location='cpu')
 
@@ -158,7 +177,6 @@ def main():
             print(f"\rSegmenting image {i}/{len(dataloader)}", end='')
             # batch = batch.cuda()
             enc = wnet.forward(batch, returns="enc")
-            # encodings.append(enc[0].reshape(enc.shape[2], enc.shape[3], enc.shape[1]).detach().numpy())
             encodings.append(enc[0].detach().numpy())
 
         encodings = torch.tensor(encodings)
