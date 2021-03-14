@@ -13,9 +13,9 @@ python-dateutil==2.8.1
 PyYAML==5.4.1
 requests==2.25.1
 six==1.15.0
-torch==1.7.1+cu110
+# torch==1.7.1+cu110
 torch-enhance==0.1.5
-torchaudio==0.7.2
-torchvision==0.8.2+cu110
+# torchaudio==0.7.2
+# torchvision==0.8.2+cu110
 typing-extensions==3.7.4.3
 urllib3==1.26.3

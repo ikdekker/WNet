@@ -41,7 +41,10 @@ parser.add_argument('--load', metavar='of', default=None, type=str,
                     help='model')
 parser.add_argument('--save_model', metavar='of', default=None, type=str,
                     help='directory to save model')
-
+parser.add_argument('train', metavar='of', default=None, type=str,
+                    help='train the model')
+parser.add_argument('segment', metavar='of', default=None, type=str,
+                    help='segment the images')
 
 vertical_sobel=torch.nn.Parameter(torch.from_numpy(np.array([[[[1,  0,  -1], 
                                             [1,  0,  -1], 
@@ -56,6 +59,8 @@ def gradient_regularization(softmax, device='cuda'):
     hori=torch.cat([F.conv2d(softmax[:, i].unsqueeze(1), horizontal_sobel) for i in range(softmax.shape[1])], 1)
     # print('vert', torch.sum(vert))
     # print('hori', torch.sum(hori))
+
+    # mag = sqrt[ vert^2 + hori^2 ]
     mag=torch.pow(torch.pow(vert, 2)+torch.pow(hori, 2), 0.5)
     mean=torch.mean(mag)
     return mean
@@ -112,10 +117,17 @@ def main():
     # Download BSD500 dataset
     torch_enhance.datasets.BSDS500()
 
-    dataset = datasets.ImageFolder("./data", transform=transforms)
+    dataset = datasets.ImageFolder(".data", transform=transforms)
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=True)
 
-    if not args.load:
+    if args.load:
+        wnet = torch.load(args.load, map_location='cpu')
+    else:
+        wnet = WNet.WNet(4)
+
+    wnet = wnet.cuda()
+
+    if args.train:
 
         if not args.save_model:
             print("Provide a name for the model")
@@ -124,8 +136,7 @@ def main():
         save_model_dir = f"models/{args.save_model}"
         os.makedirs(save_model_dir)
 
-        wnet=WNet.WNet(4)
-        wnet=wnet.cuda()
+
 
         learning_rate = 0.0003
         optimizer=torch.optim.SGD(wnet.parameters(), learning_rate)
@@ -138,20 +149,17 @@ def main():
                 print(f"Reducing learning rate to {learning_rate}")
                 optimizer=torch.optim.SGD(wnet.parameters(), learning_rate)
 
+                model_name = f"{args.save_model}-{epoch}.pt"
+                model_path = f"{save_model_dir}/{model_name}"
+                print(f"Saving current model as '{model_path}'")
+                torch.save(wnet, model_path)
+
             if epoch % 100 == 0:
                 print("==============================")
                 print("Epoch = " + str(epoch))
                 duration = (datetime.now() - start_time).seconds
                 print(f"Loss: {loss}")
                 print(f"Duration: {duration}s")
-
-                model_name = f"{args.save_model}-{epoch}.pt"
-                model_path = f"{save_model_dir}/{model_name}"
-                print(f"Saving current model as '{model_path}'")
-                torch.save(wnet, model_path)
-
-
-
 
                 start_time = datetime.now()
 
@@ -166,12 +174,11 @@ def main():
             # print(f"Duration: {duration}s")
 
         torch.save(wnet, "models/75.pt")
-    else:
-        wnet = torch.load(args.load, map_location='cpu')
+    elif args.segment:
 
         encodings = []
         for i, (batch, labels) in enumerate(dataloader):
-            if i == 50:
+            if i == 20:
                 break
 
             print(f"\rSegmenting image {i}/{len(dataloader)}", end='')
