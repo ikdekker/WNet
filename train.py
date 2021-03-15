@@ -7,12 +7,14 @@ Training and Predicting with the W-Net unsupervised segmentation architecture
 """
 
 import os
+import re
 import argparse
 from datetime import datetime
 
 from PIL import Image
 import matplotlib.pyplot as plt
 import numpy as np
+import random
 
 import torch
 import torch.nn as nn
@@ -41,10 +43,8 @@ parser.add_argument('--load', metavar='of', default=None, type=str,
                     help='model')
 parser.add_argument('--save_model', metavar='of', default=None, type=str,
                     help='directory to save model')
-parser.add_argument('train', metavar='of', default=None, type=str,
-                    help='train the model')
-parser.add_argument('segment', metavar='of', default=None, type=str,
-                    help='segment the images')
+parser.add_argument('--train', action='store_true', help='train the model')
+parser.add_argument('--predict', action='store_true', help='segment the images')
 
 vertical_sobel=torch.nn.Parameter(torch.from_numpy(np.array([[[[1,  0,  -1], 
                                             [1,  0,  -1], 
@@ -82,7 +82,7 @@ def train_op(model, optimizer, input, psi=0.5):
 
     optimizer.zero_grad()
 
-    return (model, rec_loss)
+    return (model, rec_loss, enc, dec)
 
 def test():
     wnet=WNet.WNet(4)
@@ -102,6 +102,11 @@ def show_batch(dl, nmax=64):
         show_images(images, nmax)
         break
 
+def show_grid(arrays):
+    encodings = torch.tensor(arrays)
+    plt.imshow(torchvision.utils.make_grid(encodings, nrow=10).permute(1, 2, 0))
+    plt.show()
+
 def main():
     args = parser.parse_args()
 
@@ -118,10 +123,14 @@ def main():
     torch_enhance.datasets.BSDS500()
 
     dataset = datasets.ImageFolder(".data", transform=transforms)
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=True)
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=len(dataset), shuffle=True, pin_memory=True)
+    data_cuda = [x[0].cuda() for x in iter(dataloader)][0]
 
+    start_epoch = 1
+    batch_size = 10
     if args.load:
         wnet = torch.load(args.load, map_location='cpu')
+        # result = re.match('.+-\d\.pt', args.load)
     else:
         wnet = WNet.WNet(4)
 
@@ -134,7 +143,7 @@ def main():
             return
 
         save_model_dir = f"models/{args.save_model}"
-        os.makedirs(save_model_dir)
+        os.makedirs(save_model_dir, exist_ok=True)
 
 
 
@@ -144,6 +153,16 @@ def main():
         start_time = datetime.now()
         loss = 0
         for epoch in range(1, 50000):
+            # batch, labels = next(iter(dataloader))
+
+            perm = torch.randperm(data_cuda.size(0))
+            idx = perm[:batch_size]
+            batch = data_cuda[idx]
+
+            # batch = torch.stack(random.sample(data_cuda, batch_size))
+            # batch = batch.cuda()
+            wnet, loss, enc, dec = train_op(wnet, optimizer, batch)
+
             if epoch % 1000 == 0:
                 learning_rate /= 10
                 print(f"Reducing learning rate to {learning_rate}")
@@ -163,18 +182,15 @@ def main():
 
                 start_time = datetime.now()
 
-
-
-            batch, labels = next(iter(dataloader))
-            batch = batch.cuda()
-            wnet, loss = train_op(wnet, optimizer, batch)
+                # show_grid(np.concatenate([enc[:10].cpu().detach().numpy() , dec[:10].cpu().detach().numpy()]))
+                show_grid(enc[:10].cpu().detach().numpy())
+                show_grid(dec[:10].cpu().detach().numpy())
 
 
             # duration = (datetime.now() - start_time).seconds
             # print(f"Duration: {duration}s")
 
-        torch.save(wnet, "models/75.pt")
-    elif args.segment:
+    elif args.predict:
 
         encodings = []
         for i, (batch, labels) in enumerate(dataloader):
